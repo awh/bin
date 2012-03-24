@@ -1,0 +1,22 @@
+#!/usr/bin/python
+
+import os
+import re
+import sys
+import zipfile
+
+def grepJAR(jarFileName, re):
+    jar = zipfile.ZipFile(jarFileName)
+    for name in jar.namelist():
+        if re.search(name):
+            print('%s: %s' % (jarFileName, name))
+    jar.close()
+
+def searchRoot(root, re):
+    for dirpath, dirnames, filenames in os.walk(root):
+        for file in filenames:
+            if file.lower().endswith('.jar'):
+                grepJAR('%s/%s' % (dirpath, file), re)
+
+for pattern in sys.argv[1:]:
+    searchRoot(os.getenv('M2_HOME'), re.compile(pattern))

@@ -1,0 +1,48 @@
+#!/usr/bin/python
+
+import sys
+import zipfile
+
+def extract(jarFileName):
+    '''Extract the JAR manifest from the specified Java Archive'''
+    jar = zipfile.ZipFile(jarFileName)
+    manifest = jar.read('META-INF/MANIFEST.MF')
+    jar.close()
+    return manifest
+
+def unwrap(manifest):
+    '''Split a manifest into unwrapped lines'''
+    unwrapped = []
+    for line in manifest.splitlines():
+        if line.startswith(' '):
+            unwrapped[-1] += line.lstrip(' ')
+        else:
+            unwrapped.append(line)
+    return unwrapped
+
+def parse(lines):
+    '''Parse unwrapped manifest lines into a dictionary'''
+    properties = {}
+    for line in lines:
+        try:
+            (key, value) = line.split(': ', 1)
+            properties[key] = value
+        except ValueError:
+            pass
+    return properties
+        
+def prettyPrint(properties):
+    '''Pretty print manifest properties'''
+    for key in sorted(properties.keys()):
+        if key == 'Export-Package' or key == 'Import-Package':
+            print('%s: ' % key)
+            for package in sorted(properties[key].split(',')):
+                print(' %s' % package)
+        else:
+            print('%s: %s' % (key, properties[key]))    
+
+if len(sys.argv) == 1:
+    print('USAGE: %s <jar>' % sys.argv[0])
+else:
+    for jar in sys.argv[1:]:
+        prettyPrint(parse(unwrap(extract(jar))))
