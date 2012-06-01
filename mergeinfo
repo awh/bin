@@ -1,0 +1,55 @@
+#!/usr/bin/python
+
+import os
+import subprocess
+
+class IsNotUnderVersionControlException(Exception):
+    def __init__(self, value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+
+class IsNotAWorkingCopyException(Exception):
+    def __init__(self, value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+
+def get_svn_proplist_xml(filename):
+    """Return an XML description of the specified file's SVN properties."""
+    args = [ 'svn', 'proplist', '--xml', filename]
+    svn = subprocess.Popen(args, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+    (stdout, stderr) = svn.communicate()
+    if 'is not under version control' in stderr:
+        raise IsNotUnderVersionControlException(stderr)
+    if 'is not a working copy' in stderr:
+        raise IsNotAWorkingCopyException(stderr)
+    return stdout
+
+def has_svn_mergeinfo(filename):
+    """Determine if the specified file has the SVN mergeinfo property."""
+    return 'svn:mergeinfo' in get_svn_proplist_xml(filename)
+
+for dirpath, dirnames, filenames in os.walk('.'):
+
+    # Don't consider or descend into .svn directories
+    if '.svn' in dirnames:
+        dirnames.remove('.svn')
+
+    # Test files for svn:mergeinfo property; ignore those
+    # not under version control
+    for filename in filenames:
+        try:
+            if has_svn_mergeinfo(os.path.join(dirpath, filename)):
+                print os.path.join(dirpath, filename)
+        except IsNotUnderVersionControlException:
+            pass
+
+    # Test directories for svn:mergeinfo property; don't descend
+    # into those which are not under version control
+    for dirname in reversed(dirnames):
+        try:
+            if has_svn_mergeinfo(os.path.join(dirpath, dirname)):
+                print os.path.join(dirpath, dirname)
+        except IsNotUnderVersionControlException:
+            dirnames.remove(dirname)
