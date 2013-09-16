@@ -1,0 +1,73 @@
+#!/usr/bin/perl -w
+
+use Getopt::Long;
+use POSIX;
+use IO::Handle;
+use IO::Select;
+
+my($optIf, $optUnless, $optSucceeds, $optFails) = (0, 0, 0, 0);
+
+GetOptions('if'=> \$optIf,
+           'unless' => \$optUnless,
+           'succeeds' => \$optSucceeds,
+           'fails' => \$optFails);
+
+if(!($optIf ^ $optUnless) || !($optSucceeds ^ $optFails)) {
+    print "USAGE: $0 (--if | --unless) (--succeeds | --fails) <executable> [-- <executable options>]$/";
+    exit(1);
+}
+
+my($stdoutRead, $stdoutWrite) = &POSIX::pipe();
+my($stderrRead, $stderrWrite) = &POSIX::pipe();
+
+if(my $pid = fork()) {
+    # we're the parent - close the write ends of the pipes
+    &POSIX::close($stdoutWrite);
+    &POSIX::close($stderrWrite);
+
+    my $readSet = IO::Select->new(
+        IO::Handle->new_from_fd($stdoutRead, 'r'),
+        IO::Handle->new_from_fd($stderrRead, 'r')
+    );
+
+    my %outputs = (
+        $stdoutRead => *STDOUT,
+        $stderrRead => *STDERR
+    );
+
+    while(@ready = $readSet->can_read()) {
+        foreach $rh (@ready) {
+            if(&POSIX::read($rh->fileno, $buf, 512) <= 0) {
+                $readSet->remove($rh);
+            } else {
+                push(@output, [$outputs{$rh->fileno}, $buf]);
+            }
+        }
+    }
+
+    if(wait()) {
+        my $exitCode = $? >> 8;
+        my $suppress = !$optIf ^ !$optSucceeds ^ !$exitCode;
+
+        if(!$suppress) {
+            foreach $entry (@output) {
+                $$entry[0]->print($$entry[1]);
+            }
+        }
+
+        exit($exitCode);
+    } else {
+        die "Wait for child [$pid] failed: $!$/";
+    }
+} else {
+    # we're the child - close read end of pipes, dup write ends to stdout/err
+    &POSIX::close($stdoutRead);
+    &POSIX::close($stderrRead);
+    &POSIX::close(STDOUT->fileno());
+    &POSIX::close(STDERR->fileno());
+    &POSIX::dup($stdoutWrite);
+    &POSIX::dup($stderrWrite);
+    &POSIX::close($stdoutWrite);
+    &POSIX::close($stderrWrite);
+    exec(@ARGV);
+}
